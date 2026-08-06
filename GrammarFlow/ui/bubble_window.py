@@ -2,13 +2,14 @@
 GrammarFlow — Floating Bubble («наушник» у курсора).
 
 Редактируемый текст, локальные шорткаты, без дублирующей стрелки expand.
+Исправить → применить текст + буфер; Правки → подсветка мест ошибок.
 """
 
 from __future__ import annotations
 
 import logging
 
-from PySide6.QtCore import Qt, Signal, QTimer, QPoint
+from PySide6.QtCore import Qt, Signal, QPoint
 from PySide6.QtGui import QPainter, QColor, QCursor, QKeySequence, QTextCursor, QShortcut
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
@@ -19,6 +20,7 @@ from clipboard_manager import ClipboardManager
 from api_client import LlmApiClient
 from models import ApiResponse, CorrectionResult, TextError
 from .theme import Colors, prepare_frameless_overlay, set_font, fade_window
+from .highlight import apply_correction_highlights, clear_highlights
 from .components import (
     WindowTitleBar, PrimaryButton, GhostButton, LoadingOverlay, RefreshButton,
     ICON_WAND, ICON_SPARKLES,
@@ -46,6 +48,8 @@ class BubbleWindow(QWidget):
         self._original_text = ""
         self._corrected_text = ""
         self._errors: list[TextError] = []
+        self._pending_result: CorrectionResult | None = None
+        self._highlights_on = False
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -53,8 +57,8 @@ class BubbleWindow(QWidget):
             | Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setMinimumSize(340, 380)
-        self.resize(390, 440)
+        self.setMinimumSize(360, 520)
+        self.resize(420, 580)
 
         prepare_frameless_overlay(self)
         self.setWindowOpacity(1.0)
@@ -109,6 +113,7 @@ class BubbleWindow(QWidget):
 
         self._preview_card = QFrame()
         self._preview_card.setObjectName("previewCard")
+        self._preview_card.setMinimumHeight(220)
         self._preview_card.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -128,6 +133,7 @@ class BubbleWindow(QWidget):
         )
         self._text_editor.setAcceptRichText(False)
         self._text_editor.setFrameShape(QFrame.Shape.NoFrame)
+        self._text_editor.setMinimumHeight(200)
         self._text_editor.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -140,6 +146,7 @@ class BubbleWindow(QWidget):
             f"  font-size: 14px;"
             f"}}"
         )
+        self._text_editor.textChanged.connect(self._on_editor_text_changed)
         card_layout.addWidget(self._text_editor)
         body_layout.addWidget(self._preview_card, stretch=1)
 
@@ -156,6 +163,12 @@ class BubbleWindow(QWidget):
         self._btn_correct.setToolTip("Исправить орфографию (Ctrl+Enter)")
         self._btn_correct.clicked.connect(self._on_auto_correct)
         body_layout.addWidget(self._btn_correct)
+
+        self._btn_review = GhostButton("Правки")
+        self._btn_review.setToolTip("Показать, где были ошибки (подсветка)")
+        self._btn_review.setEnabled(False)
+        self._btn_review.clicked.connect(self._on_review_corrections)
+        body_layout.addWidget(self._btn_review)
 
         self._btn_improve = GhostButton(
             "Варианты", ICON_SPARKLES, badge_count=0
@@ -179,6 +192,19 @@ class BubbleWindow(QWidget):
 
         self._loader = LoadingOverlay(self._container)
         self._loader.hide()
+        self._suppress_text_changed = False
+
+    def _on_editor_text_changed(self) -> None:
+        if self._suppress_text_changed:
+            return
+        if self._pending_result is not None:
+            expected = self._pending_result.corrected_text
+            if self._text_editor.toPlainText() != expected:
+                self._clear_pending()
+                self._error_badge.setText("Текст изменился — повторите Исправить")
+                self._error_badge.setStyleSheet(
+                    f"color: {Colors.TEXT_MUTED.name()}; font-size: 12px;"
+                )
 
     def _setup_shortcuts(self) -> None:
         QShortcut(QKeySequence("Ctrl+Return"), self, self._on_auto_correct)
@@ -219,37 +245,29 @@ class BubbleWindow(QWidget):
             f"color: {Colors.SUCCESS.name()}; font-size: 12px;"
         )
 
+    def _clear_pending(self) -> None:
+        self._pending_result = None
+        self._highlights_on = False
+        self._btn_review.setEnabled(False)
+        clear_highlights(self._text_editor)
+
     def _apply_text(self, text: str) -> None:
         self._original_text = text or ""
         self._corrected_text = ""
         self._errors = []
         self._btn_improve.set_badge(0)
         self._error_badge.setText("")
+        self._clear_pending()
+        self._suppress_text_changed = True
         self._text_editor.setPlainText(self._original_text)
-
-    def update_with_errors(self, errors: list[TextError], corrected_text: str) -> None:
-        self._errors = errors
-        self._corrected_text = corrected_text
-        self._original_text = corrected_text
-        self._text_editor.setPlainText(corrected_text)
-        if errors:
-            self._error_badge.setText(f"{len(errors)} ошибок исправлено")
-            self._error_badge.setStyleSheet(
-                f"color: {Colors.ERROR.name()}; font-size: 12px;"
-            )
-            self._btn_improve.set_badge(min(len(errors), 9))
-        else:
-            self._error_badge.setText("Ошибок не найдено")
-            self._error_badge.setStyleSheet(
-                f"color: {Colors.SUCCESS.name()}; font-size: 12px;"
-            )
-            self._btn_improve.set_badge(0)
+        self._suppress_text_changed = False
 
     def _on_auto_correct(self) -> None:
         text = self.current_text().strip()
         if not text:
             return
         self._original_text = text
+        self._clear_pending()
         self._loader.show_loading()
         self._btn_correct.setEnabled(False)
         self._api.correct_text(text, self._on_correction_result)
@@ -273,15 +291,67 @@ class BubbleWindow(QWidget):
 
         result: CorrectionResult = response.data
         if result.has_changes:
-            self.update_with_errors(result.errors, result.corrected_text)
+            self._pending_result = result
+            self._errors = result.errors
+            self._corrected_text = result.corrected_text
+            self._original_text = result.corrected_text
+            n = len(result.errors) or 1
+
+            self._suppress_text_changed = True
+            self._text_editor.setPlainText(result.corrected_text)
+            clear_highlights(self._text_editor)
+            self._suppress_text_changed = False
+            self._highlights_on = False
+
             self._clipboard.save_and_replace(result.corrected_text)
             self.text_replaced.emit(result.corrected_text)
-            QTimer.singleShot(700, self.hide_bubble)
+
+            self._btn_review.setEnabled(True)
+            self._btn_improve.set_badge(min(n, 9))
+            self._error_badge.setText(
+                f"Исправлено {n} · в буфере — Правки покажут где"
+            )
+            self._error_badge.setStyleSheet(
+                f"color: {Colors.SUCCESS.name()}; font-size: 12px;"
+            )
         else:
+            self._pending_result = None
+            self._btn_review.setEnabled(False)
+            self._btn_improve.set_badge(0)
             self._error_badge.setText("Ошибок не найдено")
             self._error_badge.setStyleSheet(
                 f"color: {Colors.SUCCESS.name()}; font-size: 12px;"
             )
+
+    def _on_review_corrections(self) -> None:
+        if self._highlights_on:
+            clear_highlights(self._text_editor)
+            self._highlights_on = False
+            self._error_badge.setText("Подсветка снята")
+            self._error_badge.setStyleSheet(
+                f"color: {Colors.TEXT_MUTED.name()}; font-size: 12px;"
+            )
+            return
+
+        result = self._pending_result
+        if result is None or not result.has_changes:
+            return
+
+        self._suppress_text_changed = True
+        n = apply_correction_highlights(
+            self._text_editor,
+            corrected_text=result.corrected_text,
+            errors=result.errors,
+            original_text=result.original_text,
+        )
+        self._suppress_text_changed = False
+        self._highlights_on = True
+        self._error_badge.setText(
+            f"Показано {n} правок" if n else "Изменения подсвечены"
+        )
+        self._error_badge.setStyleSheet(
+            f"color: {Colors.SUCCESS.name()}; font-size: 12px;"
+        )
 
     def _position_near_cursor(self) -> None:
         pos = QCursor.pos()

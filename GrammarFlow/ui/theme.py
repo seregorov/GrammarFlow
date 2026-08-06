@@ -8,8 +8,19 @@ from __future__ import annotations
 import sys
 
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QColor, QPainter, QFont
-from PySide6.QtWidgets import QWidget
+from PySide6.QtGui import QColor, QPainter, QFont, QPalette
+from PySide6.QtWidgets import QWidget, QStyleFactory, QApplication
+
+
+def css(color: QColor) -> str:
+    """
+    QColor → CSS. Важно: QColor.name() отбрасывает alpha,
+    поэтому BORDER/BG_HOVER превращались в сплошной #ffffff.
+    """
+    r, g, b, a = color.red(), color.green(), color.blue(), color.alpha()
+    if a >= 255:
+        return f"#{r:02x}{g:02x}{b:02x}"
+    return f"rgba({r}, {g}, {b}, {a})"
 
 
 class Colors:
@@ -140,7 +151,7 @@ QSS_GLOBAL = f"""
 QWidget {{
     font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif;
     font-size: 14px;
-    color: {Colors.TEXT_SECONDARY.name()};
+    color: {css(Colors.TEXT_SECONDARY)};
 }}
 
 QPushButton {{
@@ -149,76 +160,121 @@ QPushButton {{
     padding: 8px 14px;
     font-weight: 500;
     font-size: 13px;
-    color: {Colors.TEXT_PRIMARY.name()};
+    color: {css(Colors.TEXT_PRIMARY)};
     background: transparent;
+    outline: none;
 }}
 QPushButton:hover {{
-    background: {Colors.BG_HOVER.name()};
+    background: {css(Colors.BG_HOVER)};
 }}
 QPushButton:pressed {{
     background: rgba(255, 255, 255, 28);
 }}
+QPushButton:focus {{
+    outline: none;
+    border: none;
+}}
 QPushButton:disabled {{
-    color: {Colors.TEXT_DIMMED.name()};
+    color: {css(Colors.TEXT_DIMMED)};
 }}
 
 QPushButton#primaryBtn {{
-    background: {Colors.ACCENT.name()};
+    background: {css(Colors.ACCENT)};
     color: #FFFFFF;
     font-weight: 600;
     border-radius: 10px;
-    border: 1px solid {Colors.ACCENT_LIGHT.name()};
+    border: 1px solid {css(Colors.ACCENT)};
     min-height: 42px;
+    outline: none;
 }}
 QPushButton#primaryBtn:hover {{
-    background: {Colors.ACCENT_HOVER.name()};
+    background: {css(Colors.ACCENT_HOVER)};
+    border: 1px solid {css(Colors.ACCENT_HOVER)};
+}}
+QPushButton#primaryBtn:pressed {{
+    background: {css(Colors.ACCENT_HOVER)};
+    border: 1px solid {css(Colors.ACCENT_HOVER)};
+}}
+QPushButton#primaryBtn:focus {{
+    outline: none;
+    background: {css(Colors.ACCENT)};
+    border: 1px solid {css(Colors.ACCENT)};
 }}
 QPushButton#primaryBtn:disabled {{
     background: rgba(59, 130, 246, 90);
-    border-color: transparent;
+    border: 1px solid transparent;
 }}
 
 QPushButton#ghostBtn {{
-    background: {Colors.BG_SURFACE.name()};
-    border: 1px solid {Colors.BORDER.name()};
+    background: {css(Colors.BG_SURFACE)};
+    border: 1px solid rgba(148, 163, 184, 70);
     border-radius: 10px;
     min-height: 40px;
+    outline: none;
 }}
 QPushButton#ghostBtn:hover {{
-    border-color: {Colors.ACCENT_LIGHT.name()};
-    background: {Colors.BG_HOVER.name()};
+    border: 1px solid rgba(96, 165, 250, 160);
+    background: rgba(59, 130, 246, 36);
+}}
+QPushButton#ghostBtn:pressed {{
+    border: 1px solid rgba(96, 165, 250, 200);
+    background: rgba(59, 130, 246, 56);
+}}
+QPushButton#ghostBtn:focus {{
+    outline: none;
+    border: 1px solid rgba(148, 163, 184, 70);
+    background: {css(Colors.BG_SURFACE)};
+}}
+QPushButton#ghostBtn:disabled {{
+    color: {css(Colors.TEXT_DIMMED)};
+    background: {css(Colors.BG_SURFACE)};
+    border: 1px solid rgba(100, 116, 139, 50);
 }}
 
 QPushButton#chromeBtn {{
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: {Colors.TEXT_CHROME.name()};
+    color: {css(Colors.TEXT_CHROME)};
     min-width: 32px;
     min-height: 28px;
     padding: 0;
+    outline: none;
 }}
 QPushButton#chromeBtn:hover {{
     background: rgba(255, 255, 255, 18);
+    border: none;
+}}
+QPushButton#chromeBtn:focus {{
+    outline: none;
+    background: transparent;
+    border: none;
 }}
 QPushButton#chromeClose:hover {{
-    background: {Colors.ERROR.name()};
+    background: {css(Colors.ERROR)};
     color: #FFFFFF;
+    border: none;
+}}
+QPushButton#chromeClose:focus {{
+    outline: none;
+    background: transparent;
+    border: none;
+    color: {css(Colors.TEXT_CHROME)};
 }}
 
 QTextEdit, QTextBrowser {{
-    background: {Colors.BG_INPUT.name()};
-    color: {Colors.TEXT_PRIMARY.name()};
+    background: {css(Colors.BG_INPUT)};
+    color: {css(Colors.TEXT_PRIMARY)};
     border: 1px solid rgba(255, 255, 255, 16);
     border-radius: 10px;
     padding: 14px;
     font-size: 15px;
     line-height: 1.45;
-    selection-background-color: {Colors.ACCENT.name()};
+    selection-background-color: {css(Colors.ACCENT)};
     selection-color: #FFFFFF;
 }}
 QTextEdit:focus, QTextBrowser:focus {{
-    border-color: {Colors.BORDER_FOCUS.name()};
+    border-color: {css(Colors.BORDER_FOCUS)};
 }}
 
 QScrollBar:vertical {{
@@ -272,6 +328,26 @@ QMenu::separator {{
 
 
 def apply_theme(app_or_widget) -> None:
+    """Fusion + тёмная палитра: Windows native style рисует белую обводку фокуса."""
+    if isinstance(app_or_widget, QApplication):
+        fusion = QStyleFactory.create("Fusion")
+        if fusion is not None:
+            app_or_widget.setStyle(fusion)
+        palette = QPalette()
+        palette.setColor(QPalette.ColorRole.Window, Colors.BG_WINDOW)
+        palette.setColor(QPalette.ColorRole.WindowText, Colors.TEXT_PRIMARY)
+        palette.setColor(QPalette.ColorRole.Base, Colors.BG_INPUT)
+        palette.setColor(QPalette.ColorRole.Text, Colors.TEXT_PRIMARY)
+        palette.setColor(QPalette.ColorRole.Button, Colors.BG_SURFACE)
+        palette.setColor(QPalette.ColorRole.ButtonText, Colors.TEXT_PRIMARY)
+        palette.setColor(QPalette.ColorRole.Highlight, Colors.ACCENT)
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))
+        palette.setColor(QPalette.ColorRole.Light, Colors.BG_SURFACE)
+        palette.setColor(QPalette.ColorRole.Midlight, Colors.BG_CARD)
+        palette.setColor(QPalette.ColorRole.Dark, Colors.BG_WINDOW)
+        palette.setColor(QPalette.ColorRole.Mid, Colors.BG_CARD)
+        palette.setColor(QPalette.ColorRole.Shadow, QColor(0, 0, 0))
+        app_or_widget.setPalette(palette)
     app_or_widget.setStyleSheet(QSS_GLOBAL)
 
 

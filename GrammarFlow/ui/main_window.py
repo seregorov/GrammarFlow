@@ -21,6 +21,7 @@ from models import (
     ApiResponse, CorrectionResult, ImprovementResult, RewriteSuggestion,
 )
 from .theme import Colors, prepare_frameless_overlay, fade_window
+from .highlight import apply_correction_highlights, clear_highlights
 from .components import (
     WindowTitleBar, ModeSegment, RefreshButton, SuggestionCard,
     LoadingOverlay, Toast,
@@ -59,6 +60,7 @@ class MainWindow(QWidget):
         self._suggestions_baseline = ""
         self._suppress_text_changed = False
         self._suggestions_stale = False
+        self._highlights_on = False
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
@@ -109,8 +111,8 @@ class MainWindow(QWidget):
         content_l.setSpacing(12)
 
         hotkeys_hint = QLabel(
-            "Alt+C открыть · Ctrl+Enter исправить · Ctrl+Shift+Enter варианты · "
-            "Ctrl+R буфер · Esc назад"
+            "Alt+C открыть · Ctrl+Enter исправить · "
+            "Ctrl+Shift+Enter варианты · Ctrl+R буфер · Esc назад"
         )
         hotkeys_hint.setWordWrap(True)
         hotkeys_hint.setStyleSheet(
@@ -214,6 +216,10 @@ class MainWindow(QWidget):
         self._active_mode = mode
         self._mode_segment.set_active(mode)
 
+    def _clear_highlights(self) -> None:
+        self._highlights_on = False
+        clear_highlights(self._text_editor)
+
     def show_main(
         self,
         initial_text: str = "",
@@ -228,6 +234,7 @@ class MainWindow(QWidget):
             self._original_text = initial_text
         self._suggestions_baseline = self._text_editor.toPlainText()
         self._suggestions_stale = False
+        self._clear_highlights()
         self._clear_cards()
         self._show_suggestions_placeholder(
             "Нажмите «Варианты» или Ctrl+Shift+Enter"
@@ -282,6 +289,7 @@ class MainWindow(QWidget):
         self._original_text = text
         self._suggestions_baseline = text
         self._suppress_text_changed = False
+        self._clear_highlights()
         self._mark_suggestions_stale(clear=True)
         self._update_status("Текст обновлён из буфера")
 
@@ -291,6 +299,8 @@ class MainWindow(QWidget):
     def _on_editor_text_changed(self) -> None:
         if self._suppress_text_changed:
             return
+        if self._highlights_on:
+            self._clear_highlights()
         if not self._suggestions and not self._suggestions_stale:
             return
         current = self._text_editor.toPlainText()
@@ -322,6 +332,7 @@ class MainWindow(QWidget):
         if not text:
             return
         self._original_text = text
+        self._clear_highlights()
         self._loader.show_loading()
         self._mode_segment.setEnabled(False)
         self._update_status("Анализ…")
@@ -349,18 +360,29 @@ class MainWindow(QWidget):
         result: CorrectionResult = response.data
         if result.has_changes:
             self._suppress_text_changed = True
-            self._text_editor.setPlainText(result.corrected_text)
-            self._corrected_text = result.corrected_text
+            n = apply_correction_highlights(
+                self._text_editor,
+                corrected_text=result.corrected_text,
+                errors=result.errors,
+                original_text=result.original_text or self._original_text,
+            )
             self._suggestions_baseline = result.corrected_text
             self._suppress_text_changed = False
+            self._highlights_on = True
+            self._original_text = result.corrected_text
+            self._corrected_text = result.corrected_text
             self._clipboard.save_and_replace(result.corrected_text)
-            n = len(result.errors)
-            self._update_status(f"Исправлено {n} ошибок · {response.latency_ms}ms")
-            self._toast._message = f"Исправлено {n} ошибок"
+            self.text_replaced.emit(result.corrected_text)
+            err_n = len(result.errors) or n or 1
+            self._update_status(
+                f"Исправлено {err_n} · подсвечено {n} · {response.latency_ms}ms"
+            )
+            self._toast._message = f"Исправлено {err_n}"
             self._toast._color = Colors.SUCCESS
             self._place_toast()
             self._toast.show_toast()
         else:
+            self._clear_highlights()
             self._update_status(f"Ошибок не найдено · {response.latency_ms}ms")
 
     def _on_improvement_result(self, response: ApiResponse) -> None:

@@ -163,8 +163,8 @@ class HotkeyConfig:
 @dataclass
 class UIConfig:
     """Параметры интерфейса."""
-    bubble_width: int = 380
-    bubble_max_height: int = 420
+    bubble_width: int = 420
+    bubble_max_height: int = 580
     main_width: int = 560
     main_height: int = 680
     border_radius: int = 12

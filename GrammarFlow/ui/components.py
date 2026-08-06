@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QLabel, QFrame, QSizePolicy,
 )
 
-from .theme import Colors, set_font
+from .theme import Colors, css, set_font
 
 
 def _render_svg_icon(svg_text: str, w: int, h: int) -> QPixmap | None:
@@ -201,6 +201,10 @@ class PrimaryButton(QPushButton):
         super().__init__("", parent)
         self._label_text = text
         self.setObjectName("primaryBtn")
+        self.setFlat(True)
+        self.setAutoDefault(False)
+        self.setDefault(False)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(44)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -252,6 +256,10 @@ class GhostButton(QPushButton):
         super().__init__("", parent)
         self._label_text = text
         self.setObjectName("ghostBtn")
+        self.setFlat(True)
+        self.setAutoDefault(False)
+        self.setDefault(False)
+        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(42)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -280,7 +288,7 @@ class GhostButton(QPushButton):
         self._text_label = QLabel(text)
         self._text_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._text_label.setStyleSheet(
-            f"color: {Colors.TEXT_SECONDARY.name()}; font-size: 13px;"
+            f"color: {css(Colors.TEXT_SECONDARY)}; font-size: 13px;"
             " font-weight: 600; background: transparent;"
         )
         layout.addWidget(self._text_label)
@@ -290,7 +298,7 @@ class GhostButton(QPushButton):
         self._badge.setFixedSize(20, 20)
         self._badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._badge.setStyleSheet(
-            f"background: {Colors.ERROR.name()}; color: #FFFFFF;"
+            f"background: {css(Colors.ERROR)}; color: #FFFFFF;"
             "border-radius: 10px; font-size: 11px; font-weight: 700;"
         )
         layout.addWidget(self._badge)
@@ -352,11 +360,15 @@ class ActionPill(QPushButton):
         if active:
             self.setStyleSheet(
                 f"QPushButton {{"
-                f"  background: {Colors.ACCENT.name()};"
-                f"  border: 1px solid {Colors.ACCENT_LIGHT.name()};"
+                f"  background: {css(Colors.ACCENT)};"
+                f"  border: 1px solid {css(Colors.ACCENT)};"
                 f"  border-radius: 10px;"
+                f"  outline: none;"
                 f"}}"
-                f"QPushButton:hover {{ background: {Colors.ACCENT_HOVER.name()}; }}"
+                f"QPushButton:hover {{ background: {css(Colors.ACCENT_HOVER)}; "
+                f"border: 1px solid {css(Colors.ACCENT_HOVER)}; }}"
+                f"QPushButton:focus {{ outline: none; background: {css(Colors.ACCENT)}; "
+                f"border: 1px solid {css(Colors.ACCENT)}; }}"
             )
             self._text_label.setStyleSheet(
                 "color: #FFFFFF; font-weight: 600; font-size: 12px; background: transparent;"
@@ -364,23 +376,29 @@ class ActionPill(QPushButton):
         else:
             self.setStyleSheet(
                 f"QPushButton {{"
-                f"  background: {Colors.BG_SURFACE.name()};"
-                f"  border: 1px solid {Colors.BORDER.name()};"
+                f"  background: {css(Colors.BG_SURFACE)};"
+                f"  border: 1px solid rgba(148, 163, 184, 70);"
                 f"  border-radius: 10px;"
+                f"  outline: none;"
                 f"}}"
                 f"QPushButton:hover {{"
-                f"  border-color: {Colors.ACCENT_LIGHT.name()};"
-                f"  background: {Colors.BG_HOVER.name()};"
+                f"  border: 1px solid rgba(96, 165, 250, 160);"
+                f"  background: rgba(59, 130, 246, 36);"
+                f"}}"
+                f"QPushButton:focus {{"
+                f"  outline: none;"
+                f"  background: {css(Colors.BG_SURFACE)};"
+                f"  border: 1px solid rgba(148, 163, 184, 70);"
                 f"}}"
             )
             self._text_label.setStyleSheet(
-                f"color: {Colors.ACCENT_LIGHT.name()}; font-weight: 500; font-size: 12px;"
+                f"color: {css(Colors.ACCENT_LIGHT)}; font-weight: 500; font-size: 12px;"
                 " background: transparent;"
             )
 
 
 class ModeSegment(QWidget):
-    """Компактный сегмент: Исправить | Варианты."""
+    """Две отдельные кнопки: Исправить | Варианты."""
 
     correct_clicked = Signal()
     improve_clicked = Signal()
@@ -390,31 +408,24 @@ class ModeSegment(QWidget):
         self.setFixedHeight(40)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        wrap = QFrame(self)
-        wrap.setObjectName("modeSegment")
-        wrap.setStyleSheet(
-            f"#modeSegment {{"
-            f"  background: {Colors.BG_SURFACE.name()};"
-            f"  border: 1px solid {Colors.BORDER.name()};"
-            f"  border-radius: 10px;"
-            f"}}"
-        )
-        root = QHBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(wrap)
-
-        row = QHBoxLayout(wrap)
-        row.setContentsMargins(3, 3, 3, 3)
-        row.setSpacing(2)
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(10)
 
         self._btn_correct = QPushButton("Исправить")
         self._btn_correct.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_correct.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_correct.setAutoDefault(False)
+        self._btn_correct.setDefault(False)
         self._btn_correct.setToolTip("Исправить орфографию (Ctrl+Enter)")
         self._btn_correct.clicked.connect(self.correct_clicked.emit)
         row.addWidget(self._btn_correct, stretch=1)
 
         self._btn_improve = QPushButton("Варианты")
         self._btn_improve.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._btn_improve.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._btn_improve.setAutoDefault(False)
+        self._btn_improve.setDefault(False)
         self._btn_improve.setToolTip("Варианты улучшения (Ctrl+Shift+Enter)")
         self._btn_improve.clicked.connect(self.improve_clicked.emit)
         row.addWidget(self._btn_improve, stretch=1)
@@ -429,35 +440,52 @@ class ModeSegment(QWidget):
             if active:
                 btn.setStyleSheet(
                     f"QPushButton {{"
-                    f"  background: {Colors.ACCENT.name()};"
+                    f"  background: {css(Colors.ACCENT)};"
                     f"  color: #FFFFFF;"
-                    f"  border: none;"
-                    f"  border-radius: 8px;"
+                    f"  border: 1px solid {css(Colors.ACCENT)};"
+                    f"  border-radius: 10px;"
                     f"  font-weight: 600;"
                     f"  font-size: 12px;"
-                    f"  padding: 6px 10px;"
+                    f"  padding: 8px 12px;"
                     f"  text-align: center;"
+                    f"  outline: none;"
                     f"}}"
-                    f"QPushButton:hover {{ background: {Colors.ACCENT_HOVER.name()}; }}"
+                    f"QPushButton:hover {{ background: {css(Colors.ACCENT_HOVER)}; "
+                    f"border: 1px solid {css(Colors.ACCENT_HOVER)}; }}"
+                    f"QPushButton:pressed {{ background: {css(Colors.ACCENT_HOVER)}; }}"
+                    f"QPushButton:focus {{ outline: none; background: {css(Colors.ACCENT)}; "
+                    f"border: 1px solid {css(Colors.ACCENT)}; }}"
                     f"QPushButton:disabled {{ background: rgba(59,130,246,90); }}"
                 )
             else:
                 btn.setStyleSheet(
                     f"QPushButton {{"
-                    f"  background: transparent;"
-                    f"  color: {Colors.TEXT_SECONDARY.name()};"
-                    f"  border: none;"
-                    f"  border-radius: 8px;"
+                    f"  background: {css(Colors.BG_SURFACE)};"
+                    f"  color: {css(Colors.TEXT_SECONDARY)};"
+                    f"  border: 1px solid rgba(148, 163, 184, 70);"
+                    f"  border-radius: 10px;"
                     f"  font-weight: 500;"
                     f"  font-size: 12px;"
-                    f"  padding: 6px 10px;"
+                    f"  padding: 8px 12px;"
                     f"  text-align: center;"
+                    f"  outline: none;"
                     f"}}"
                     f"QPushButton:hover {{"
-                    f"  background: {Colors.BG_HOVER.name()};"
-                    f"  color: {Colors.TEXT_PRIMARY.name()};"
+                    f"  background: rgba(59, 130, 246, 36);"
+                    f"  color: {css(Colors.TEXT_PRIMARY)};"
+                    f"  border: 1px solid rgba(96, 165, 250, 160);"
                     f"}}"
-                    f"QPushButton:disabled {{ color: {Colors.TEXT_DIMMED.name()}; }}"
+                    f"QPushButton:pressed {{"
+                    f"  background: rgba(59, 130, 246, 56);"
+                    f"  color: {css(Colors.TEXT_PRIMARY)};"
+                    f"}}"
+                    f"QPushButton:focus {{"
+                    f"  outline: none;"
+                    f"  background: {css(Colors.BG_SURFACE)};"
+                    f"  color: {css(Colors.TEXT_SECONDARY)};"
+                    f"  border: 1px solid rgba(148, 163, 184, 70);"
+                    f"}}"
+                    f"QPushButton:disabled {{ color: {css(Colors.TEXT_DIMMED)}; }}"
                 )
 
     def setEnabled(self, enabled: bool) -> None:  # noqa: N802
@@ -530,7 +558,7 @@ class SuggestionCard(QFrame):
         top = QHBoxLayout()
         self._style_lbl = QLabel(style_label)
         self._style_lbl.setStyleSheet(
-            f"color: {accent_color.name()}; font-weight: 600; font-size: 12px;"
+            f"color: {css(accent_color)}; font-weight: 600; font-size: 12px;"
         )
         top.addWidget(self._style_lbl)
         top.addStretch()
@@ -538,27 +566,27 @@ class SuggestionCard(QFrame):
 
         if description and not compact:
             desc = QLabel(description)
-            desc.setStyleSheet(f"color: {Colors.TEXT_DIMMED.name()}; font-size: 11px;")
+            desc.setStyleSheet(f"color: {css(Colors.TEXT_DIMMED)}; font-size: 11px;")
             desc.setWordWrap(True)
             layout.addWidget(desc)
 
         body = QLabel(text[:180] + ("..." if len(text) > 180 else ""))
         body.setWordWrap(True)
-        body.setStyleSheet(f"color: {Colors.TEXT_PRIMARY.name()}; font-size: 12px;")
+        body.setStyleSheet(f"color: {css(Colors.TEXT_PRIMARY)}; font-size: 12px;")
         layout.addWidget(body, stretch=1)
         self.set_selected(selected)
 
     def set_selected(self, selected: bool) -> None:
         self._selected = selected
-        border = self._accent.name() if selected else Colors.BORDER.name()
+        border = css(self._accent) if selected else css(Colors.BORDER)
         self.setStyleSheet(
             f"SuggestionCard {{"
-            f"  background: {Colors.BG_CARD.name()};"
+            f"  background: {css(Colors.BG_CARD)};"
             f"  border: 1px solid {border};"
             f"  border-radius: 10px;"
             f"}}"
             f"SuggestionCard:hover {{"
-            f"  border-color: {self._accent.name()};"
+            f"  border-color: {css(self._accent)};"
             f"}}"
         )
 

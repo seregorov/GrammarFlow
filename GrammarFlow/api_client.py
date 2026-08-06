@@ -15,7 +15,7 @@ import random
 from typing import Optional
 
 import httpx
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, Qt
 
 from config import LLMConfig, OPENROUTER_FREE_MODELS
 from models import (
@@ -458,7 +458,8 @@ class LlmApiClient:
             parse_mode="correct",
             parent=self._parent,
         )
-        worker.finished.connect(callback)
+        # Queued: UI/clipboard только из GUI-потока (иначе на Windows буфер молчит)
+        worker.finished.connect(callback, Qt.ConnectionType.QueuedConnection)
         self._active_worker = worker
         worker.start()
         return worker
@@ -479,7 +480,7 @@ class LlmApiClient:
             parse_mode="improve",
             parent=self._parent,
         )
-        worker.finished.connect(callback)
+        worker.finished.connect(callback, Qt.ConnectionType.QueuedConnection)
         self._active_worker = worker
         worker.start()
         return worker
