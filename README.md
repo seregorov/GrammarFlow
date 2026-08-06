@@ -1,0 +1,212 @@
+# GrammarFlow
+
+Десктоп-ассистент для правки русского текста: копируешь текст → **Alt+C** → правишь в плавающем окне или расширенном редакторе → результат снова попадает в буфер обмена.
+
+Работает поверх **Yandex AI Studio** (по умолчанию `yandexgpt-5-lite`) через OpenAI-совместимый API.
+
+Репозиторий: [github.com/seregorov/GrammarFlow](https://github.com/seregorov/GrammarFlow)
+
+---
+
+## Возможности
+
+- **Bubble** — компактное окно у курсора: правка текста, исправление, переход к вариантам
+- **Full Window** — расширенный редактор с режимами **Исправить** / **Варианты**
+- **Исправить** — орфография, пунктуация, грамматика (JSON со списком ошибок)
+- **Варианты** — 3 стилистических переписывания: формальный, краткий, творческий
+- Системный трей, один экземпляр приложения
+- Секреты только в `.env`, несекретные настройки — в `~/.grammarflow/config.json`
+
+---
+
+## Требования
+
+- Windows 10/11 (глобальные хоткеи через `pynput`, UI на Qt)
+- Python 3.10+
+- Аккаунт [Yandex AI Studio](https://aistudio.yandex.ru/) / Yandex Cloud:
+  - API-ключ сервисного аккаунта
+  - Folder ID каталога
+  - Доступ к модели генерации (например `yandexgpt-5-lite`)
+
+---
+
+## Установка
+
+```bash
+git clone https://github.com/seregorov/GrammarFlow.git
+cd GrammarFlow/GrammarFlow
+
+python -m venv .venv
+# Windows PowerShell:
+.\.venv\Scripts\Activate.ps1
+
+pip install -r requirements.txt
+```
+
+---
+
+## Настройка секретов
+
+Скопируй пример и заполни:
+
+```bash
+copy .env.example .env
+```
+
+Содержимое `.env`:
+
+```env
+YANDEX_API_KEY=ваш_ключ
+YANDEX_FOLDER_ID=ваш_folder_id
+```
+
+Файл `.env` в `.gitignore` и **не коммитится**.
+
+При первом запуске без ключей появится диалог — введённые значения сохраняются в `.env`, не в `config.json`.
+
+Альтернатива — переменные окружения:
+
+| Переменная | Назначение |
+|------------|------------|
+| `YANDEX_API_KEY` / `YC_API_KEY` | API-ключ |
+| `YANDEX_FOLDER_ID` / `YC_FOLDER_ID` | ID каталога |
+
+---
+
+## Запуск
+
+Из каталога `GrammarFlow/`:
+
+```bash
+python main.py
+```
+
+или `run.bat`.
+
+Приложение уходит в трей (`QuitOnLastWindowClosed = False`). Повторный запуск блокируется lock-файлом (один процесс).
+
+---
+
+## Как пользоваться
+
+1. Скопируй текст (Ctrl+C) в любом приложении.
+2. Нажми **Alt+C** — откроется Bubble с текстом из буфера.
+3. **Ctrl+Enter** — исправить ошибки; исправленный текст пишется в буфер.
+4. **Ctrl+Shift+Enter** — открыть Full Window и сгенерировать стилистические варианты.
+5. Кликни карточку варианта — текст подставится в редактор и в буфер.
+6. Вставь обратно в исходное приложение (Ctrl+V).
+
+### Горячие клавиши
+
+| Комбинация | Область | Действие |
+|------------|---------|----------|
+| **Alt+C** | глобально | Показать Bubble и обновить текст из буфера |
+| **Esc** | глобально | Скрыть / назад |
+| **Ctrl+Enter** | Bubble / Full | Исправить |
+| **Ctrl+Shift+Enter** | Bubble / Full | Варианты улучшения |
+| **Ctrl+R** | Bubble / Full | Перечитать буфер |
+
+Ctrl+Enter намеренно **не** глобальный, чтобы не мешать Outlook и другим приложениям.
+
+---
+
+## Архитектура
+
+```
+GrammarFlow/
+├── main.py              # Точка входа, трей, оркестрация окон
+├── config.py            # .env + ~/.grammarflow/config.json
+├── api_client.py        # LLM-клиент, промпты, retry
+├── clipboard_manager.py # Чтение/запись буфера с откатом
+├── hotkey_manager.py    # Глобальные Alt+C / Esc (pynput)
+├── models.py            # CorrectionResult, RewriteSuggestion, …
+├── requirements.txt
+├── .env.example
+├── run.bat
+└── ui/
+    ├── bubble_window.py # Компактное окно
+    ├── main_window.py   # Full Window
+    ├── components.py    # Кнопки, карточки, сегмент режимов
+    └── theme.py         # Тема, анимации
+```
+
+Поток данных:
+
+```
+Буфер обмена → ClipboardManager → Bubble / Full Window
+                                      ↓
+                               LlmApiClient (httpx)
+                                      ↓
+                         Yandex AI Studio chat/completions
+                                      ↓
+                         JSON → модели → UI + буфер
+```
+
+Модель по умолчанию: `yandexgpt-5-lite`  
+URI запроса: `gpt://{folder_id}/{model}`  
+Base URL: `https://ai.api.cloud.yandex.net/v1`
+
+Поддерживаемые провайдеры в конфиге (код): `yandex`, `openrouter`, `openai`, `gemini`, `ollama`. UI первого запуска заточен под Yandex.
+
+---
+
+## Конфигурация
+
+### Секреты — `GrammarFlow/.env`
+
+Только `YANDEX_API_KEY`, `YANDEX_FOLDER_ID`.
+
+### Настройки — `~/.grammarflow/config.json`
+
+Провайдер, модель, temperature, hotkeys, размеры окон и т.д.  
+Поля `api_key` / `folder_id` при сохранении **обнуляются** (миграция со старых конфигов переносит секреты в `.env`).
+
+Ключевые дефолты LLM:
+
+| Параметр | Значение |
+|----------|----------|
+| provider | `yandex` |
+| model | `yandexgpt-5-lite` |
+| temperature | `0.3` |
+| max_tokens | `2048` |
+
+---
+
+## Зависимости
+
+| Пакет | Зачем |
+|-------|--------|
+| PySide6 | UI |
+| pynput | Глобальные хоткеи |
+| httpx | HTTP к LLM |
+| pyperclip | Fallback буфера |
+| python-dotenv | Загрузка `.env` |
+| json5 | Разбор ответов |
+
+---
+
+## Режимы LLM
+
+**Исправить** — корректор: правит ошибки, сохраняет стиль автора, отвечает JSON с `corrected_text` и списком `errors`.
+
+**Варианты** — стилист: три переписывания (`formal` / `concise` / `creative`). На очень коротких фразах (типа «Как дила») варианты часто почти совпадают с исправленным текстом — это поведение модели, не баг UI.
+
+---
+
+## Troubleshooting
+
+| Симптом | Что проверить |
+|---------|----------------|
+| HTTP 401 | Ключ / Folder ID в `.env`, доступ к модели в AI Studio |
+| «Уже запущен» | Закрой экземпляр из трея или сними процесс |
+| Alt+C не срабатывает | Права / конфликт с другими глобальными хоткеями; раскладка не мешает (слушатель по VK) |
+| Пустой Bubble | Сначала скопируй текст или нажми Ctrl+R |
+| Нет вариантов | Нужен непустой текст; дождись ответа API |
+
+---
+
+## Безопасность
+
+- Не коммить `.env`
+- Не публиковать API-ключи из логов и скриншотов
+- Ключ сервисного аккаунта ограничь ролями AI Studio / Foundation Models
