@@ -1,0 +1,6 @@
+PySide6>=6.7.0
+pynput>=1.7.6
+httpx>=0.27.0
+pyperclip>=1.8.2
+json5>=0.9.14
+python-dotenv>=1.0.0
