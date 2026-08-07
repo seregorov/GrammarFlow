@@ -70,6 +70,9 @@ class LLMConfig:
     model: str = "yandexgpt-5-lite"
     temperature: float = 0.3
     max_tokens: int = 2048
+    # Только для режима «Исправить» (стабильнее + длинные письма)
+    correction_temperature: float = 0.05
+    correction_max_tokens: int = 8192
     timeout: int = 45
     # OpenRouter-specific (если вручную вернуть provider=openrouter)
     app_title: str = "GrammarFlow"
