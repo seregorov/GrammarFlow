@@ -6,10 +6,6 @@
 
 Репозиторий: [github.com/seregorov/GrammarFlow](https://github.com/seregorov/GrammarFlow)
 
-### Android
-
-Клавиатура **GrammarFlow Keyboard** (IME) вынесена в отдельную локальную папку `../GrammarFlowAndroid` (пока без git/GitHub).
-
 ---
 
 ## Возможности
