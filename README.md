@@ -8,7 +8,7 @@
 
 ### Android
 
-Клавиатура **GrammarFlow Keyboard** (IME) вынесена в отдельный репозиторий: [seregorov/GrammarFlowAndroid](https://github.com/seregorov/GrammarFlowAndroid) (локально: `../GrammarFlowAndroid`).
+Клавиатура **GrammarFlow Keyboard** (IME) вынесена в отдельную локальную папку `../GrammarFlowAndroid` (пока без git/GitHub).
 
 ---
 
