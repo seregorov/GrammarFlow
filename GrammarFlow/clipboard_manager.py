@@ -16,6 +16,8 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QClipboard, QGuiApplication
 from PySide6.QtCore import QObject, Signal, QMimeData
 
+from models import normalize_newlines
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,6 +64,7 @@ class ClipboardManager(QObject):
             pasted = _pyperclip_paste()
             if pasted:
                 text = pasted
+        text = normalize_newlines(text)
         if text:
             logger.debug("Clipboard read: %d chars", len(text))
         return text

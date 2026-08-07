@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 
 from clipboard_manager import ClipboardManager
 from api_client import LlmApiClient
-from models import ApiResponse, CorrectionResult, TextError
+from models import ApiResponse, CorrectionResult, TextError, normalize_newlines
 from .theme import Colors, prepare_frameless_overlay, set_font, fade_window
 from .highlight import apply_correction_highlights, clear_highlights
 from .components import (
@@ -164,15 +164,13 @@ class BubbleWindow(QWidget):
         self._btn_correct.clicked.connect(self._on_auto_correct)
         body_layout.addWidget(self._btn_correct)
 
-        self._btn_review = GhostButton("Правки")
+        self._btn_review = GhostButton("Правки", badge_count=0)
         self._btn_review.setToolTip("Показать, где были ошибки (подсветка)")
         self._btn_review.setEnabled(False)
         self._btn_review.clicked.connect(self._on_review_corrections)
         body_layout.addWidget(self._btn_review)
 
-        self._btn_improve = GhostButton(
-            "Варианты", ICON_SPARKLES, badge_count=0
-        )
+        self._btn_improve = GhostButton("Варианты", ICON_SPARKLES)
         self._btn_improve.setToolTip("Открыть варианты улучшения (Ctrl+Shift+Enter)")
         self._btn_improve.clicked.connect(self._on_suggest_improve)
         body_layout.addWidget(self._btn_improve)
@@ -249,13 +247,14 @@ class BubbleWindow(QWidget):
         self._pending_result = None
         self._highlights_on = False
         self._btn_review.setEnabled(False)
+        self._btn_review.set_badge(0)
         clear_highlights(self._text_editor)
 
     def _apply_text(self, text: str) -> None:
-        self._original_text = text or ""
+        self._original_text = normalize_newlines(text or "")
         self._corrected_text = ""
         self._errors = []
-        self._btn_improve.set_badge(0)
+        self._btn_review.set_badge(0)
         self._error_badge.setText("")
         self._clear_pending()
         self._suppress_text_changed = True
@@ -263,7 +262,7 @@ class BubbleWindow(QWidget):
         self._suppress_text_changed = False
 
     def _on_auto_correct(self) -> None:
-        text = self.current_text().strip()
+        text = normalize_newlines(self.current_text()).strip()
         if not text:
             return
         self._original_text = text
@@ -295,7 +294,6 @@ class BubbleWindow(QWidget):
             self._errors = result.errors
             self._corrected_text = result.corrected_text
             self._original_text = result.corrected_text
-            n = len(result.errors) or 1
 
             self._suppress_text_changed = True
             self._text_editor.setPlainText(result.corrected_text)
@@ -307,17 +305,33 @@ class BubbleWindow(QWidget):
             self.text_replaced.emit(result.corrected_text)
 
             self._btn_review.setEnabled(True)
-            self._btn_improve.set_badge(min(n, 9))
-            self._error_badge.setText(
-                f"Исправлено {n} · в буфере — Правки покажут где"
+            # Сразу показать где правки (кнопка Правки — toggle)
+            self._suppress_text_changed = True
+            n_hl = apply_correction_highlights(
+                self._text_editor,
+                corrected_text=result.corrected_text,
+                errors=result.errors,
+                original_text=result.original_text,
             )
+            self._suppress_text_changed = False
+            self._highlights_on = True
+            shown = n_hl or len(result.errors)
+            if shown <= 0:
+                # Текст отличается, но видимых правок нет (редкий край)
+                self._btn_review.set_badge(0)
+                self._error_badge.setText("Текст обновлён")
+            else:
+                self._btn_review.set_badge(min(shown, 9))
+                self._error_badge.setText(
+                    f"Исправлено {shown} · подсвечено {n_hl}"
+                )
             self._error_badge.setStyleSheet(
                 f"color: {Colors.SUCCESS.name()}; font-size: 12px;"
             )
         else:
             self._pending_result = None
             self._btn_review.setEnabled(False)
-            self._btn_improve.set_badge(0)
+            self._btn_review.set_badge(0)
             self._error_badge.setText("Ошибок не найдено")
             self._error_badge.setStyleSheet(
                 f"color: {Colors.SUCCESS.name()}; font-size: 12px;"

@@ -12,6 +12,32 @@ from enum import Enum
 from typing import Optional
 
 
+def normalize_newlines(text: str) -> str:
+    """CRLF/CR → LF. Иначе Windows-буфер даёт ложный дифф и «съехавшую» подсветку."""
+    if not text:
+        return text
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def apply_listed_corrections(text: str, errors: list["TextError"]) -> str:
+    """
+    Применить правки из errors к тексту.
+    Модель иногда заполняет errors, но забывает внести их в corrected_text.
+    """
+    result = text
+    patches = [
+        (e.original, e.corrected)
+        for e in errors
+        if e.original and e.corrected is not None and e.original != e.corrected
+    ]
+    # Длинные фрагменты раньше — меньше шансов испортить короткими заменами
+    patches.sort(key=lambda p: len(p[0]), reverse=True)
+    for original, corrected in patches:
+        if original in result:
+            result = result.replace(original, corrected, 1)
+    return result
+
+
 class ErrorType(Enum):
     """Тип обнаруженной ошибки."""
     SPELLING = "spelling"
@@ -50,6 +76,13 @@ class CorrectionResult:
     has_changes: bool = False
 
     def __post_init__(self):
+        self.original_text = normalize_newlines(self.original_text)
+        self.corrected_text = normalize_newlines(self.corrected_text)
+        # Модель перечислила ошибки, но не внесла их в corrected_text
+        if self.errors and self.corrected_text == self.original_text:
+            patched = apply_listed_corrections(self.original_text, self.errors)
+            if patched != self.original_text:
+                self.corrected_text = patched
         self.has_changes = self.original_text != self.corrected_text
 
 

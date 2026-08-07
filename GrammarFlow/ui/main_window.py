@@ -19,6 +19,7 @@ from clipboard_manager import ClipboardManager
 from api_client import LlmApiClient
 from models import (
     ApiResponse, CorrectionResult, ImprovementResult, RewriteSuggestion,
+    normalize_newlines,
 )
 from .theme import Colors, prepare_frameless_overlay, fade_window
 from .highlight import apply_correction_highlights, clear_highlights
@@ -230,6 +231,7 @@ class MainWindow(QWidget):
     ) -> None:
         self._suppress_text_changed = True
         if initial_text is not None:
+            initial_text = normalize_newlines(initial_text)
             self._text_editor.setPlainText(initial_text)
             self._original_text = initial_text
         self._suggestions_baseline = self._text_editor.toPlainText()
@@ -328,7 +330,7 @@ class MainWindow(QWidget):
 
     def _on_auto_correct(self) -> None:
         self._set_active_mode("correct")
-        text = self._text_editor.toPlainText().strip()
+        text = normalize_newlines(self._text_editor.toPlainText()).strip()
         if not text:
             return
         self._original_text = text

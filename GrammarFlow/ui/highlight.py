@@ -10,7 +10,7 @@ from typing import Iterable
 from PySide6.QtGui import QColor, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import QTextEdit
 
-from models import TextError
+from models import TextError, normalize_newlines
 from .theme import Colors
 
 
@@ -38,10 +38,29 @@ def _make_selection(
     return sel
 
 
+def _is_word_char(ch: str) -> bool:
+    return ch.isalnum() or ch in ("-", "‐", "‑", "'", "’", "ё", "Ё")
+
+
+def _is_whitespace_only(s: str) -> bool:
+    return (not s) or s.isspace()
+
+
+def _expand_to_word(text: str, start: int, end: int) -> tuple[int, int]:
+    """Расширить спан до границ слова — иначе «п» из пробе/робе подсветит не ту букву."""
+    if not text or start < 0 or end > len(text) or start > end:
+        return start, end
+    while start > 0 and _is_word_char(text[start - 1]):
+        start -= 1
+    while end < len(text) and _is_word_char(text[end]):
+        end += 1
+    return start, end
+
+
 def _minimal_corrected_span(original: str, corrected: str) -> str:
     """
-  Минимальный фрагмент corrected, который отличается от original.
-  «Как дила всем» / «Как дела всем» → «дела», не вся строка.
+    Минимальный фрагмент corrected, который отличается от original.
+    Затем расширяем до слова: «робе»/«пробе» → «пробе», не «п».
     """
     if not corrected:
         return ""
@@ -64,8 +83,11 @@ def _minimal_corrected_span(original: str, corrected: str) -> str:
     start = prefix
     end = len(corrected) - suffix
     if start >= end:
-        return corrected.strip()
-    return corrected[start:end]
+        start, end = 0, len(corrected)
+
+    start, end = _expand_to_word(corrected, start, end)
+    fragment = corrected[start:end].strip()
+    return fragment or corrected.strip()
 
 
 def _find_fragment(
@@ -109,14 +131,14 @@ def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
 
 
 def _spans_from_errors(corrected: str, errors: Iterable[TextError]) -> list[tuple[int, int]]:
-    """Подсветить только изменённые фрагменты (орфография / пунктуация)."""
+    """Подсветить исправленные фрагменты из списка errors."""
     spans: list[tuple[int, int]] = []
     occupied: list[tuple[int, int]] = []
     search_from = 0
 
     for err in errors:
         fragment = _minimal_corrected_span(err.original, err.corrected)
-        if not fragment:
+        if not fragment or _is_whitespace_only(fragment):
             continue
 
         hint = err.start_pos if err.start_pos >= 0 else search_from
@@ -138,16 +160,52 @@ def _spans_from_errors(corrected: str, errors: Iterable[TextError]) -> list[tupl
 
 
 def _spans_from_diff(original: str, corrected: str) -> list[tuple[int, int]]:
-    """Подсветить только вставки/замены посимвольно (не целые слова/строки)."""
+    """
+    Подсветка по диффу: только смысловые вставки/замены.
+    Пробелы и переносы строк не подсвечиваем и не раздуваем до соседних слов.
+    """
+    original = normalize_newlines(original)
+    corrected = normalize_newlines(corrected)
     if not corrected or original == corrected:
         return []
 
     matcher = difflib.SequenceMatcher(a=original, b=corrected, autojunk=False)
     spans: list[tuple[int, int]] = []
-    for tag, _i1, _i2, j1, j2 in matcher.get_opcodes():
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            continue
+
+        if tag == "delete":
+            # Удаление только пробелов/CR — игнор; иначе стык без раздувания на абзац
+            if _is_whitespace_only(original[i1:i2]):
+                continue
+            if j1 < len(corrected) and _is_word_char(corrected[j1]):
+                start, end = _expand_to_word(corrected, j1, j1 + 1)
+                spans.append((start, end))
+            elif j1 > 0 and _is_word_char(corrected[j1 - 1]):
+                start, end = _expand_to_word(corrected, j1 - 1, j1)
+                spans.append((start, end))
+            continue
+
         if tag not in ("replace", "insert") or j1 >= j2:
             continue
-        spans.append((j1, j2))
+
+        new_chunk = corrected[j1:j2]
+        old_chunk = original[i1:i2] if tag == "replace" else ""
+        # CRLF↔LF / лишние пустые строки — не ошибки
+        if _is_whitespace_only(new_chunk) and _is_whitespace_only(old_chunk):
+            continue
+        if _is_whitespace_only(new_chunk) and tag == "insert":
+            continue
+
+        if any(_is_word_char(c) for c in new_chunk):
+            start, end = _expand_to_word(corrected, j1, j2)
+        else:
+            # пунктуация и т.п. — узкий спан, без захвата «Сегодня»
+            start, end = j1, j2
+        if start < end:
+            spans.append((start, end))
+
     return _merge_spans(spans)
 
 
@@ -160,16 +218,21 @@ def apply_correction_highlights(
 ) -> int:
     """
     Показать corrected_text и подсветить правки.
+    Сначала дифф полного текста (надёжнее), затем errors как запасной путь.
     Возвращает число подсвеченных фрагментов.
     """
+    corrected_text = normalize_newlines(corrected_text)
+    original_text = normalize_newlines(original_text) if original_text else ""
     editor.setPlainText(corrected_text)
 
-    spans = _spans_from_errors(corrected_text, errors)
-    if not spans and original_text:
+    spans: list[tuple[int, int]] = []
+    if original_text and original_text != corrected_text:
         spans = _spans_from_diff(original_text, corrected_text)
+    if not spans:
+        spans = _spans_from_errors(corrected_text, errors)
 
     bg = QColor(Colors.SUCCESS)
-    bg.setAlpha(90)
+    bg.setAlpha(110)
 
     selections: list[QTextEdit.ExtraSelection] = []
     for start, end in spans:
