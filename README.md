@@ -6,9 +6,9 @@
 
 Репозиторий: [github.com/seregorov/GrammarFlow](https://github.com/seregorov/GrammarFlow)
 
-### Android (в разработке)
+### Android
 
-Клавиатура **GrammarFlow Keyboard** (IME) — правка текста в поле ввода. Документация, roadmap, API-контракт: [`android/`](android/README.md).
+Клавиатура **GrammarFlow Keyboard** (IME) вынесена в отдельный репозиторий: [seregorov/GrammarFlowAndroid](https://github.com/seregorov/GrammarFlowAndroid) (локально: `../GrammarFlowAndroid`).
 
 ---
 

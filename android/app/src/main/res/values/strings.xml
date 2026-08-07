@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="app_name">GrammarFlow</string>
-    <string name="ime_name">GrammarFlow Keyboard</string>
-    <string name="ime_subtype_ru">Русский</string>
-    <string name="ime_subtype_en">English</string>
-    <string name="process_text_label">Исправить (GrammarFlow)</string>
-</resources>
